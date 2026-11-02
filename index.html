@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>個人方向燈</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400&family=IBM+Plex+Mono:wght@400&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<main>
+  <!-- 首頁 -->
+  <section class="screen intro" id="s-intro">
+    <p class="label">sound prototype</p>
+    <button class="btn" id="start" type="button">開始體驗</button>
+  </section>
+
+  <!-- 問卷 -->
+  <section class="screen" id="s-quiz" hidden>
+    <div class="bar"><span id="q-bar"></span></div>
+    <p class="label" id="q-count"></p>
+    <h2 id="q-text"></h2>
+    <div class="options" id="q-options"></div>
+    <button class="link" id="q-back" type="button">← 上一題</button>
+  </section>
+
+  <!-- 聲音操作 -->
+  <section class="screen" id="s-sound" hidden>
+    <div class="stage">
+      <div class="lamp" id="lamp" aria-hidden="true"></div>
+      <button class="btn play" id="play" type="button" aria-pressed="false"><span id="play-label">開始聲音</span></button>
+    </div>
+
+    <div class="row">
+      <label class="label" for="volume">音量</label>
+      <input type="range" id="volume" min="0" max="100" value="80">
+    </div>
+
+    <div class="compare" role="group" aria-label="比較聲音">
+      <button type="button" id="mode-initial" aria-pressed="false">初始聲音</button>
+      <button type="button" id="mode-current" aria-pressed="true">目前聲音</button>
+    </div>
+
+    <div class="sliders" id="sliders">
+      <div class="sl">
+        <label for="sl-approach">現在的我，想靠近還是躲起來？</label>
+        <div class="track"><input type="range" id="sl-approach" min="0" max="100" value="50"><span class="mark" id="sl-approach-mark"></span></div>
+        <div class="ends"><span>想躲起來</span><span>想靠近</span></div>
+      </div>
+      <div class="sl">
+        <label for="sl-letgo">事情不照計畫走時，我想掌控還是放手？</label>
+        <div class="track"><input type="range" id="sl-letgo" min="0" max="100" value="50"><span class="mark" id="sl-letgo-mark"></span></div>
+        <div class="ends"><span>想掌控</span><span>交給偶然</span></div>
+      </div>
+      <div class="sl">
+        <label for="sl-change">如果有改變的機會，我想維持還是試試看？</label>
+        <div class="track"><input type="range" id="sl-change" min="0" max="100" value="50"><span class="mark" id="sl-change-mark"></span></div>
+        <div class="ends"><span>維持原樣</span><span>想試試看</span></div>
+      </div>
+      <p class="legend"><i></i>問卷產生的初始位置</p>
+    </div>
+
+    <button class="btn next" id="to-reflect" type="button">下一頁</button>
+
+    <div class="footer">
+      <button class="link" id="reset-sliders" type="button">拉霸回到初始位置</button>
+      <button class="link" id="restart" type="button">重新開始</button>
+    </div>
+  </section>
+
+  <!-- 數值整理＋回饋 -->
+  <section class="screen" id="s-reflect" hidden>
+    <p class="label">你的聲音</p>
+    <table class="values">
+      <thead><tr><th></th><th>初始</th><th>目前</th></tr></thead>
+      <tbody>
+        <tr><th>速度</th><td id="v-bpm-i"></td><td id="v-bpm-c"></td></tr>
+        <tr><th>音高</th><td id="v-pitch-i"></td><td id="v-pitch-c"></td></tr>
+        <tr><th>音色</th><td id="v-timbre-i"></td><td id="v-timbre-c"></td></tr>
+      </tbody>
+    </table>
+
+    <form class="ask" id="ask">
+      <label for="feeling"><h2>剛剛的聲音，你有什麼感覺？</h2></label>
+      <textarea id="feeling" rows="7" placeholder="想到什麼都可以寫下來"></textarea>
+      <p class="note">不需要留下姓名。送出的只有這段文字和上面的數值。</p>
+      <button class="btn" id="send" type="submit">送出</button>
+      <p class="status" id="send-status" role="status"></p>
+    </form>
+
+    <div class="footer">
+      <button class="link" id="back-sound" type="button">← 回到聲音</button>
+      <button class="link" id="restart2" type="button">重新開始</button>
+    </div>
+  </section>
+</main>
+
+<script src="js/questionnaire.js"></script>
+<script src="js/sound-mapping.js"></script>
+<script src="js/audio-engine.js"></script>
+<script src="js/submit.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
