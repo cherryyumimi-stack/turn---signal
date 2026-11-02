@@ -1,12 +1,12 @@
 /* Layout: a single narrow column in a dark room; the lamp is the only light source. */
 :root {
-  --void: #222522;       /* 背景：柏油深灰 */
-  --surface: #2a2d2a;    /* 輸入框底色：比背景略亮 */
-  --hair: #50544d;       /* 輔助線條：暗灰 */
-  --ink: #f0eee5;        /* 主要文字：暖白 */
-  --dim: #9c9f96;        /* 次要文字：灰綠 */
-  --amber: #e5a33d;      /* 訊號主色：琥珀橘 */
-  --amber-low: #4a3c26;  /* 琥珀橘的暗色（燈熄時） */
+  --void: #050505;       /* 背景：黑 */
+  --surface: #17191c;    /* 輸入框底色：比背景略亮 */
+  --hair: #4a4f57;       /* 輔助線條：石板灰 */
+  --ink: #ffffff;        /* 主要文字：白 */
+  --dim: #a3a8ad;        /* 次要文字：淺灰 */
+  --amber: #d9f400;      /* 訊號主色：螢光萊姆 */
+  --amber-low: #3d4500;  /* 訊號主色的暗色（燈熄時，橄欖綠） */
   --sans: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
   color-scheme: dark;
@@ -70,8 +70,8 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--amber); out
   background: radial-gradient(circle, var(--surface) 0 60%, var(--void) 61%);
   transition: background .25s ease-out, box-shadow .25s ease-out;
 }
-.lamp.on { background: radial-gradient(circle, var(--amber) 0 60%, var(--void) 61%); box-shadow: 0 0 60px 4px rgba(229,163,61,.35); transition: none; }
-.lamp.on-weak { background: radial-gradient(circle, var(--amber-low) 0 60%, var(--void) 61%); box-shadow: 0 0 30px 0 rgba(229,163,61,.15); transition: none; }
+.lamp.on { background: radial-gradient(circle, var(--amber) 0 60%, var(--void) 61%); box-shadow: 0 0 60px 4px rgba(217,244,0,.35); transition: none; }
+.lamp.on-weak { background: radial-gradient(circle, var(--amber-low) 0 60%, var(--void) 61%); box-shadow: 0 0 30px 0 rgba(217,244,0,.15); transition: none; }
 .play { min-width: 180px; align-self: center; }
 .play[aria-pressed="true"] { border-color: var(--amber); color: var(--amber); }
 
