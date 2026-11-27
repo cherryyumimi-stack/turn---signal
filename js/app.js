@@ -6,14 +6,12 @@
 (function () {
   const $ = (id) => document.getElementById(id);
   const engine = TS.AudioEngine();
-  const STORE_KEY = "turn-signal-state-v2";
+  const STORE_KEY = "turn-signal-state-v3";
 
   const state = {
     answers: [],
     qi: 0,
-    initial: null,     // 問卷產生的初始分數（不會被拉霸改動）
-    sliders: null,     // 使用者目前的拉霸位置
-    mode: "current"    // "initial" = 聽初始聲音；"current" = 聽目前聲音
+    scores: null       // 問卷產生的三個分數
   };
 
   /* ---------- 畫面切換 ---------- */
@@ -52,59 +50,22 @@
     else finishQuiz();
   }
   function finishQuiz() {
-    state.initial = TS.computeScores(state.answers);
-    state.sliders = TS.slidersFromScores(state.initial);
-    state.mode = "current";
+    state.scores = TS.computeScores(state.answers);
     save();
     enterSound();
   }
 
   /* ---------- 聲音介面 ---------- */
-  const SLIDERS = [["sl-approach", "approach"], ["sl-letgo", "letGo"], ["sl-change", "change"]];
-
   function enterSound() {
-    const init = TS.slidersFromScores(state.initial);
-    SLIDERS.forEach(([id, key]) => {
-      $(id).value = state.sliders[key];
-      // 在拉霸上標出初始位置
-      $(id + "-mark").style.left = "calc(14px + (100% - 28px) * " + (init[key] / 100) + ")";
-    });
-    setMode(state.mode);
+    applySound();
     updatePlayButton();
     show("s-sound");
   }
 
-  /** 依照目前模式，把分數轉成聲音參數交給引擎 */
+  /** 把分數與答案轉成聲音參數交給引擎 */
   function applySound() {
-    const scores = state.mode === "initial"
-      ? state.initial
-      : TS.currentScores(state.initial, state.sliders);
-    engine.setTarget(TS.mapScoresToSound(scores));
+    engine.setTarget(TS.mapScoresToSound(state.scores, state.answers));
   }
-
-  function setMode(mode) {
-    state.mode = mode;
-    $("mode-initial").setAttribute("aria-pressed", mode === "initial");
-    $("mode-current").setAttribute("aria-pressed", mode === "current");
-    $("sliders").classList.toggle("dimmed", mode === "initial");
-    applySound();
-  }
-
-  SLIDERS.forEach(([id, key]) => {
-    $(id).addEventListener("input", (e) => {
-      state.sliders[key] = Number(e.target.value);
-      if (state.mode !== "current") setMode("current"); else applySound();
-      save();
-    });
-  });
-  $("mode-initial").addEventListener("click", () => setMode("initial"));
-  $("mode-current").addEventListener("click", () => setMode("current"));
-  $("reset-sliders").addEventListener("click", () => {
-    state.sliders = TS.slidersFromScores(state.initial);
-    SLIDERS.forEach(([id, key]) => { $(id).value = state.sliders[key]; });
-    setMode("current");
-    save();
-  });
 
   /* 播放／停止 */
   function updatePlayButton() {
@@ -140,7 +101,7 @@
     engine.stop();
     updatePlayButton();
     state.answers = []; state.qi = 0;
-    state.initial = null; state.sliders = null;
+    state.scores = null;
     $("feeling").value = "";
     clearSaved();
     show("s-intro");
@@ -150,26 +111,22 @@
 
   /* ---------- 數值整理與回饋 ---------- */
   const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-  function describe(scores) {
-    const p = TS.mapScoresToSound(scores);
-    const hz = TS.SOUND_CONFIG.woodHz * p.pitchMul;
-    const midi = Math.round(69 + 12 * Math.log2(hz / 440));
-    const t = Math.round(p.timbre * 100);
-    const tw = t < 34 ? "悶" : t < 67 ? "木頭" : "脆";
-    return {
-      bpm: Math.round(p.bpm) + " BPM",
-      pitch: Math.round(hz) + " Hz（" + NOTES[midi % 12] + (Math.floor(midi / 12) - 1) + "）",
-      timbre: t + "（" + tw + "）"
-    };
-  }
   function enterReflect() {
-    const i = describe(state.initial);
-    const c = describe(TS.currentScores(state.initial, state.sliders));
-    $("v-bpm-i").textContent = i.bpm;     $("v-bpm-c").textContent = c.bpm;
-    $("v-pitch-i").textContent = i.pitch; $("v-pitch-c").textContent = c.pitch;
-    $("v-timbre-i").textContent = i.timbre; $("v-timbre-c").textContent = c.timbre;
-    state.summary = "初始：" + i.bpm + "，" + i.pitch + "，音色 " + i.timbre +
-                    "｜目前：" + c.bpm + "，" + c.pitch + "，音色 " + c.timbre;
+    const p = TS.mapScoresToSound(state.scores, state.answers);
+    const midi = Math.round(69 + 12 * Math.log2(p.freq / 440));
+    const code = TS.personalCode(state.answers);
+    const v = {
+      timbre: p.timbreName,
+      bpm: Math.round(p.bpm) + " BPM",
+      pitch: Math.round(p.freq) + " Hz（" + NOTES[midi % 12] + (Math.floor(midi / 12) - 1) + "）"
+    };
+    $("v-timbre").textContent = v.timbre;
+    $("v-bpm").textContent = v.bpm;
+    $("v-pitch").textContent = v.pitch;
+    $("v-code").textContent = code;
+    const sc = state.scores, r = Math.round;
+    state.summary = "音色 " + v.timbre + "，" + v.bpm + "，" + v.pitch + "｜編號 " + code +
+                    "｜分數 靠近 " + r(sc.approach) + "／掌控 " + r(sc.control) + "／改變 " + r(sc.change);
     $("send-status").textContent = TS.canSubmit() ? "" : "這個版本還沒有設定收集回答的地方，按下送出不會傳到任何地方。";
     show("s-reflect");
   }
@@ -201,7 +158,7 @@
 
   /* ---------- 只存在本機瀏覽器（重新整理後可接續），不上傳 ---------- */
   function save() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify({ initial: state.initial, sliders: state.sliders })); } catch (e) {}
+    try { localStorage.setItem(STORE_KEY, JSON.stringify({ scores: state.scores, answers: state.answers })); } catch (e) {}
   }
   function clearSaved() {
     try { localStorage.removeItem(STORE_KEY); } catch (e) {}
