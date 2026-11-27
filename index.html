@@ -40,34 +40,9 @@
       <input type="range" id="volume" min="0" max="100" value="80">
     </div>
 
-    <div class="compare" role="group" aria-label="比較聲音">
-      <button type="button" id="mode-initial" aria-pressed="false">初始聲音</button>
-      <button type="button" id="mode-current" aria-pressed="true">目前聲音</button>
-    </div>
-
-    <div class="sliders" id="sliders">
-      <div class="sl">
-        <label for="sl-approach">現在的我，想靠近還是躲起來？</label>
-        <div class="track"><input type="range" id="sl-approach" min="0" max="100" value="50"><span class="mark" id="sl-approach-mark"></span></div>
-        <div class="ends"><span>想躲起來</span><span>想靠近</span></div>
-      </div>
-      <div class="sl">
-        <label for="sl-letgo">事情不照計畫走時，我想掌控還是放手？</label>
-        <div class="track"><input type="range" id="sl-letgo" min="0" max="100" value="50"><span class="mark" id="sl-letgo-mark"></span></div>
-        <div class="ends"><span>想掌控</span><span>交給偶然</span></div>
-      </div>
-      <div class="sl">
-        <label for="sl-change">如果有改變的機會，我想維持還是試試看？</label>
-        <div class="track"><input type="range" id="sl-change" min="0" max="100" value="50"><span class="mark" id="sl-change-mark"></span></div>
-        <div class="ends"><span>維持原樣</span><span>想試試看</span></div>
-      </div>
-      <p class="legend"><i></i>問卷產生的初始位置</p>
-    </div>
-
     <button class="btn next" id="to-reflect" type="button">下一頁</button>
 
     <div class="footer">
-      <button class="link" id="reset-sliders" type="button">拉霸回到初始位置</button>
       <button class="link" id="restart" type="button">重新開始</button>
     </div>
   </section>
@@ -76,11 +51,11 @@
   <section class="screen" id="s-reflect" hidden>
     <p class="label">你的聲音</p>
     <table class="values">
-      <thead><tr><th></th><th>初始</th><th>目前</th></tr></thead>
       <tbody>
-        <tr><th>速度</th><td id="v-bpm-i"></td><td id="v-bpm-c"></td></tr>
-        <tr><th>音高</th><td id="v-pitch-i"></td><td id="v-pitch-c"></td></tr>
-        <tr><th>音色</th><td id="v-timbre-i"></td><td id="v-timbre-c"></td></tr>
+        <tr><th>音色</th><td id="v-timbre"></td></tr>
+        <tr><th>速度</th><td id="v-bpm"></td></tr>
+        <tr><th>音高</th><td id="v-pitch"></td></tr>
+        <tr><th>編號</th><td id="v-code"></td></tr>
       </tbody>
     </table>
 

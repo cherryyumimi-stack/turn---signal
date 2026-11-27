@@ -1,39 +1,46 @@
 /* =========================================================
  * 分數 → 聲音參數（sound-mapping.js）
  * ---------------------------------------------------------
- * 所有「分數怎麼變成聲音」的規則都集中在這個檔案。
+ * 所有「問卷怎麼變成聲音」的規則都集中在這個檔案。
  * 想調整聲音特徵，通常只需要改 SOUND_CONFIG 的數字。
+ *
+ * 三個維度各自控制一個聽得很清楚的特徵：
+ *   靠近／退開 → 音高（低沉 ↔ 高亢，跨兩個八度）
+ *   掌控／放手 → 速度（BPM）
+ *   維持／改變 → 音色種類（7 種完全不同的聲音）
+ * 另外，每個人選的「A／B／C／D 組合」會產生一個個人編號，
+ * 讓分數相同的人也會在音高、餘韻、質感上有些不同。
  * ========================================================= */
 window.TS = window.TS || {};
 
 TS.SOUND_CONFIG = {
-  /* --- 敲擊聲本體：像木魚／節拍器的木頭敲擊，一拍只響一下 --- */
-  woodHz: 720,          // 木頭共鳴的音高：越高越像小木棒，越低越像厚木塊
-  modeRatio: 2.57,      // 第二個共鳴的倍數（木頭的「空心」感，木魚約 2.5～2.7）
-  modeLevel: 0.4,       // 第二個共鳴的音量
-  decaySoft: 0.045,     // 音色 0 分時的餘韻（秒）：較悶、較長
-  decayCrisp: 0.022,    // 音色 100 分時的餘韻（秒）：較短、較脆
-  lowpassSoft: 1600,    // 音色 0 分時的高頻上限（Hz）：越低越悶
-  lowpassCrisp: 4500,   // 音色 100 分時的高頻上限（Hz）：越高越亮
-  noiseSoft: 0.5,      // 音色 0 分時，敲擊瞬間「喀」的音量
-  noiseCrisp: 1.0,     // 音色 100 分時，「喀」的音量（像樹枝折斷的乾裂聲）
-  crackleMax: 1,        // 音色高時，主擊後面跟著的細碎裂聲數量（0＝不要）
+  /* --- 維持／改變：音色種類（分數由低到高排列）---
+   * 維持型 → 熟悉、圓潤的聲音；改變型 → 奇特、電子、會變形的聲音
+   * baseHz：這種音色在「靠近／退開 50 分」時的音高 */
+  timbres: [
+    { id: "wood",    name: "木頭",   baseHz: 700 },  // 0 分：木魚、節拍器般的敲擊
+    { id: "marimba", name: "木琴",   baseHz: 520 },  // 17 分：溫暖、有音高的木琴
+    { id: "bell",    name: "鈴鐺",   baseHz: 880 },  // 33 分：清亮、會延續的鐘聲
+    { id: "pluck",   name: "撥弦",   baseHz: 330 },  // 50 分：像吉他或豎琴撥一下
+    { id: "chip",    name: "電子嗶", baseHz: 660 },  // 67 分：遊戲機般的方波「嗶」
+    { id: "metal",   name: "金屬",   baseHz: 440 },  // 83 分：敲金屬管的不和諧泛音
+    { id: "laser",   name: "雷射",   baseHz: 600 }   // 100 分：音高快速滑落的「咻」
+  ],
 
   /* --- 靠近／退開：音高 --- */
-  pitchRange: 7,        // 分數 0／100 時，音高最多降低／升高幾個半音（50 分＝原音高）
+  pitchRange: 12,       // 分數 0／100 時，音高最多降低／升高幾個半音（12＝一個八度）
+  scale: [0, 2, 4, 7, 9], // 音高對齊五聲音階，很多人同時響時不會太刺耳
 
   /* --- 掌控／放手：速度（BPM），一拍只響一下 --- */
   bpmMin: 70,           // 分數 0（交給偶然）時的 BPM
   bpmMax: 120,          // 分數 100（想掌控）時的 BPM
+  // 現場節拍器是 60 BPM，最低 70 是為了不跟節拍器重疊
 
-  /* --- 維持／改變：音色 --- */
-  // 0 分＝悶、圓、像厚木塊；100 分＝乾、脆、像樹枝折斷（見 audio-engine.js 的 voice()）
-
-  /* --- 維持／改變：拉霸敏感度 --- */
-  sensMin: 0.5,         // 分數 0：拉霸只發揮 50% 的效果
-  sensMax: 1.0,         // 分數 100：拉霸發揮 100% 的效果
-  glideSlow: 1.5,       // 分數 0：聲音花約 1.5 秒慢慢跟上拉霸
-  glideFast: 0.35,      // 分數 100：聲音約 0.35 秒就跟上拉霸
+  /* --- 個人差異（由每題選了哪個選項決定，同樣的答案永遠得到同樣的聲音）--- */
+  personalPitchSteps: 1, // 音高再往上或往下移動最多幾個音階
+  personalBpm: 4,        // BPM 再加減最多幾拍
+  decayMin: 0.75,        // 餘韻長度的倍數範圍
+  decayMax: 1.35,
 
   /* --- 安全 --- */
   maxGain: 0.9          // 主音量上限（0～1）；後面還有限幅器防止爆音
@@ -41,53 +48,63 @@ TS.SOUND_CONFIG = {
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
-/**
- * 維持／改變 → 拉霸敏感度（0.5～1）與聲音跟隨速度（秒）
- */
-TS.sensitivity = function (change) {
-  const c = TS.SOUND_CONFIG, k = clamp01(change / 100);
-  return {
-    amount: c.sensMin + (c.sensMax - c.sensMin) * k,
-    glide: c.glideSlow + (c.glideFast - c.glideSlow) * k
+/** 答案組合 → 0～1 之間固定的亂數產生器（同樣答案永遠一樣） */
+TS.personalRandom = function (answers) {
+  let h = 2166136261;
+  const s = (answers || []).join("");
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  let x = h >>> 0;
+  return function () {
+    x = (x + 0x6D2B79F5) >>> 0;
+    let t = x;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 };
 
-/**
- * 拉霸位置 → 目前的三個分數
- * 拉霸的意義：
- *   sliders.approach：0=想躲起來、100=想靠近（與分數同方向）
- *   sliders.letGo：   0=想掌控、100=交給偶然（與「掌控」分數反方向）
- *   sliders.change：  0=維持原樣、100=想試試看
- * 拉霸偏離初始位置的距離會乘上「敏感度」，所以維持型的聲音變化較緩和。
- */
-TS.currentScores = function (initial, sliders) {
-  const sens = TS.sensitivity(sliders.change).amount;
-  const targetControl = 100 - sliders.letGo;
-  return {
-    approach: initial.approach + (sliders.approach - initial.approach) * sens,
-    control: initial.control + (targetControl - initial.control) * sens,
-    change: sliders.change
-  };
+/** 答案組合 → 四碼個人編號（顯示與送出用） */
+TS.personalCode = function (answers) {
+  return (answers || []).map((i) => "ABCD"[i]).join("");
 };
 
-/** 初始分數 → 拉霸的初始位置 */
-TS.slidersFromScores = function (s) {
-  return { approach: s.approach, letGo: 100 - s.control, change: s.change };
-};
+/** 把半音數對齊到五聲音階，並往上／下移動 steps 個音階 */
+function snapToScale(semis, steps) {
+  const sc = TS.SOUND_CONFIG.scale;
+  const notes = [];
+  for (let o = -3; o <= 3; o++) sc.forEach((d) => notes.push(o * 12 + d));
+  let best = 0;
+  notes.forEach((n, i) => { if (Math.abs(n - semis) < Math.abs(notes[best] - semis)) best = i; });
+  return notes[Math.min(notes.length - 1, Math.max(0, best + steps))];
+}
 
 /**
- * 三個分數 → 聲音引擎要用的參數
+ * 三個分數＋答案 → 聲音引擎要用的參數
+ * @param {{approach:number, control:number, change:number}} s 0～100
+ * @param {number[]} answers 每題選的選項（0=A … 3=D）
  */
-TS.mapScoresToSound = function (s) {
+TS.mapScoresToSound = function (s, answers) {
   const c = TS.SOUND_CONFIG;
+  const rnd = TS.personalRandom(answers);
+  const r = [rnd(), rnd(), rnd(), rnd(), rnd(), rnd()];
+
+  const ti = Math.round(clamp01(s.change / 100) * (c.timbres.length - 1));
+  const timbre = c.timbres[ti];
+
+  const pStep = Math.round((r[0] * 2 - 1) * c.personalPitchSteps);
+  const semis = snapToScale(((s.approach - 50) / 50) * c.pitchRange, pStep);
+
+  const bpm = c.bpmMin + (c.bpmMax - c.bpmMin) * clamp01(s.control / 100)
+            + Math.round((r[1] * 2 - 1) * c.personalBpm);
+
   return {
-    // 靠近／退開：越高音越高，越低音越低
-    pitchMul: Math.pow(2, ((s.approach - 50) / 50) * c.pitchRange / 12),
-    // 掌控／放手：直接決定 BPM；越想掌控越快，越交給偶然越慢
-    bpm: c.bpmMin + (c.bpmMax - c.bpmMin) * clamp01(s.control / 100),
-    // 維持／改變：越高越乾脆（樹枝折斷），越低越悶（厚木塊）
-    timbre: clamp01(s.change / 100),
-    // 維持／改變：也決定聲音多快跟上拉霸
-    glide: TS.sensitivity(s.change).glide
+    timbre: timbre.id,
+    timbreName: timbre.name,
+    timbreIndex: ti,
+    freq: timbre.baseHz * Math.pow(2, semis / 12),
+    bpm: Math.max(64, bpm),
+    decayMul: c.decayMin + (c.decayMax - c.decayMin) * r[2],
+    shade: r[3],   // 每種音色內部的質感變化（亮／暗、比例等）
+    shade2: r[4]
   };
 };

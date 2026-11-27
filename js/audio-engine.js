@@ -1,17 +1,15 @@
 /* =========================================================
  * 聲音引擎（audio-engine.js）
  * ---------------------------------------------------------
- * 用 Web Audio API 即時合成木頭敲擊聲，不使用音檔。
+ * 用 Web Audio API 即時合成聲音，不使用音檔。
  *
- * 節奏：一拍只敲一下，間隔完全固定（60 / BPM 秒），沒有額外脈衝、沒有隨機偏移。
+ * 節奏：一拍只響一下，間隔完全固定（60 / BPM 秒），沒有額外脈衝、沒有隨機偏移。
  *
  * 三個分數各自改變一個聽得出來的特徵（數值見 sound-mapping.js）：
  *   靠近／退開 → 音高
  *   掌控／放手 → BPM
- *   維持／改變 → 音色（悶的厚木塊 ↔ 乾脆的樹枝折斷）＋拉霸敏感度
- *
- * 參數平滑：目標參數改變時，實際參數以指數方式慢慢接近，
- * 不會中斷或跳接。接近速度由「維持／改變」決定。
+ *   維持／改變 → 音色種類（木頭、木琴、鈴鐺、撥弦、電子嗶、金屬、雷射）
+ * 每個人的答案組合再微調音高、BPM、餘韻與質感。
  * ========================================================= */
 window.TS = window.TS || {};
 
@@ -21,8 +19,8 @@ TS.AudioEngine = function () {
   const TICK_MS = 25;
 
   let ctx = null, master = null, volume = 0.8, silentEl = null, noiseBuf = null;
-  let running = false, timer = null, lastTick = 0, nextTime = 0;
-  let target = null, live = null;   // 目標參數與目前（平滑中）參數
+  let running = false, timer = null, nextTime = 0;
+  let live = null;   // 目前的聲音參數
   let onPulse = function () {};
 
   /* ---------- 初始化（必須在使用者點擊後呼叫） ---------- */
@@ -42,7 +40,7 @@ TS.AudioEngine = function () {
     master.connect(limiter);
     limiter.connect(ctx.destination);
 
-    noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.03), ctx.sampleRate);
+    noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.3), ctx.sampleRate);
     const nd = noiseBuf.getChannelData(0);
     for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
 
@@ -65,48 +63,21 @@ TS.AudioEngine = function () {
     if (silentEl) silentEl.play().catch(function () {});
   }
 
-  /* ---------- 音色：依「維持／改變」在悶木塊與樹枝折斷之間內插 ---------- */
-  function voice() {
-    const T = live.timbre;
-    const mix = (a, b) => a + (b - a) * T;
-    return {
-      f: cfg.woodHz * live.pitchMul,
-      decay: mix(cfg.decaySoft, cfg.decayCrisp),
-      lowpass: mix(cfg.lowpassSoft, cfg.lowpassCrisp),
-      noise: mix(cfg.noiseSoft, cfg.noiseCrisp),
-      crackles: Math.round(cfg.crackleMax * Math.max(0, (T - 0.4) / 0.6))
-    };
+  /* ---------- 共用小工具 ---------- */
+  // 包絡：極快起音，之後以指數衰減（tau 秒）
+  function env(t, peak, attack, tau, dest) {
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + attack);
+    g.gain.setTargetAtTime(0, t + attack, tau);
+    g.connect(dest);
+    return g;
   }
-
-  /* ---------- 一下敲擊：木頭共鳴 + 敲擊瞬間的乾裂聲 ---------- */
-  function hit(t) {
-    const v = voice();
-    const lp = ctx.createBiquadFilter();
-    lp.type = "lowpass"; lp.frequency.value = v.lowpass; lp.Q.value = 0.5;
-    lp.connect(master);
-
-    // 1) 木頭共鳴：兩個正弦波，起音時音高微微下滑，快速衰減
-    [[1, 1, v.decay], [cfg.modeRatio, cfg.modeLevel, v.decay * 0.6]].forEach(function (m) {
-      const o = ctx.createOscillator(), g = ctx.createGain();
-      o.type = "sine";
-      o.frequency.setValueAtTime(v.f * m[0] * 1.12, t);
-      o.frequency.exponentialRampToValueAtTime(v.f * m[0], t + 0.008);
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(m[1] * 0.9, t + 0.0007);
-      g.gain.setTargetAtTime(0, t + 0.0007, m[2]);
-      o.connect(g); g.connect(lp);
-      o.start(t); o.stop(t + m[2] * 8);
-    });
-
-    // 2) 敲擊瞬間的木頭質感：極短的雜訊，經過「調在木頭共鳴上」的窄帶通濾波，
-    //    聽起來是「叩」而不是「沙」
-    noiseBurst(t, v.f, 8, v.noise, 0.003, lp);
-    noiseBurst(t, v.f * cfg.modeRatio, 8, v.noise * 0.6, 0.002, lp);
-
-    // 3) 樹枝折斷的細碎裂聲：主擊後幾毫秒，再來一兩下更小的乾裂
-    for (let i = 1; i <= v.crackles; i++) {
-      noiseBurst(t + 0.004 * i + Math.random() * 0.003, v.f * 3.5, 2, v.noise * 0.35 / i, 0.002, lp);
-    }
+  function osc(type, f, t, end, dest) {
+    const o = ctx.createOscillator();
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    o.connect(dest); o.start(t); o.stop(end);
+    return o;
   }
   function noiseBurst(t, freq, q, level, tau, dest) {
     const n = ctx.createBufferSource(); n.buffer = noiseBuf;
@@ -115,22 +86,106 @@ TS.AudioEngine = function () {
     g.gain.setValueAtTime(level, t);
     g.gain.setTargetAtTime(0, t, tau);
     n.connect(bp); bp.connect(g); g.connect(dest);
-    n.start(t); n.stop(t + 0.03);
+    n.start(t); n.stop(t + 0.3);
   }
 
-  /* ---------- 參數平滑 ---------- */
-  function smooth(dt) {
-    const k = 1 - Math.exp(-dt / Math.max(0.05, target.glide));
-    ["pitchMul", "bpm", "timbre", "glide"].forEach(function (key) {
-      live[key] += (target[key] - live[key]) * k;
-    });
+  /* ---------- 7 種音色（順序同 SOUND_CONFIG.timbres） ---------- */
+  const VOICES = {
+    // 木頭：兩個快速衰減的共鳴＋敲擊瞬間的「叩」
+    wood: function (t, p, out) {
+      const tau = 0.03 * p.decayMul;
+      const ratio = 2.4 + p.shade * 0.4;
+      [[1, 0.8, tau], [ratio, 0.35, tau * 0.6]].forEach(function (m) {
+        const g = env(t, m[1], 0.0007, m[2], out);
+        const o = osc("sine", p.freq * m[0] * 1.12, t, t + m[2] * 8, g);
+        o.frequency.exponentialRampToValueAtTime(p.freq * m[0], t + 0.008);
+      });
+      noiseBurst(t, p.freq, 8, 0.8, 0.003, out);
+    },
+    // 木琴：溫暖的正弦音＋第 4 倍泛音，餘韻較長
+    marimba: function (t, p, out) {
+      const tau = 0.14 * p.decayMul;
+      osc("sine", p.freq, t, t + tau * 7, env(t, 0.75, 0.002, tau, out));
+      osc("sine", p.freq * 4, t, t + tau * 3, env(t, 0.22, 0.001, tau * 0.25, out));
+      osc("sine", p.freq * (9.2 + p.shade), t, t + 0.05, env(t, 0.06, 0.001, 0.008, out));
+      noiseBurst(t, p.freq * 2, 3, 0.25, 0.002, out);
+    },
+    // 鈴鐺：FM 合成，帶不和諧泛音、清亮且延續
+    bell: function (t, p, out) {
+      const tau = 0.26 * p.decayMul;
+      const ratio = [2.76, 3.5, 4.2][Math.floor(p.shade * 3)];
+      const car = osc("sine", p.freq, t, t + tau * 7, env(t, 0.45, 0.002, tau, out));
+      const modGain = ctx.createGain();
+      modGain.gain.setValueAtTime(p.freq * (2 + p.shade2 * 2), t);
+      modGain.gain.setTargetAtTime(p.freq * 0.2, t, tau * 0.4);
+      modGain.connect(car.frequency);
+      osc("sine", p.freq * ratio, t, t + tau * 7, modGain);
+    },
+    // 撥弦：鋸齒波經過快速關閉的低通濾波，像撥一下弦
+    pluck: function (t, p, out) {
+      const tau = 0.16 * p.decayMul;
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass"; lp.Q.value = 2 + p.shade * 6;
+      lp.frequency.setValueAtTime(Math.min(16000, p.freq * (10 + p.shade2 * 10)), t);
+      lp.frequency.setTargetAtTime(p.freq * 1.3, t, 0.04);
+      const g = env(t, 0.5, 0.002, tau, out);
+      lp.connect(g);
+      osc("sawtooth", p.freq, t, t + tau * 7, lp);
+      osc("sawtooth", p.freq * 1.004, t, t + tau * 7, lp);
+    },
+    // 電子嗶：方波，一下之內音高跳一階（「嗶─啵」），像遊戲機
+    chip: function (t, p, out) {
+      const len = 0.07 + 0.05 * p.decayMul;
+      const tri = p.shade2 >= 0.5, peak = tri ? 0.45 : 0.22;   // 三角波較柔，音量補大一點
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(peak, t + 0.002);
+      g.gain.setValueAtTime(peak, t + len);
+      g.gain.linearRampToValueAtTime(0, t + len + 0.01);
+      const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 6000;
+      g.connect(lp); lp.connect(out);
+      const jump = p.shade < 0.5 ? 1.5 : 2;          // 跳五度或八度
+      const o = osc(tri ? "triangle" : "square", p.freq, t, t + len + 0.02, g);
+      o.frequency.setValueAtTime(p.freq * jump, t + len * 0.45);
+    },
+    // 金屬：高調變量的不和諧 FM，像敲鐵管或鍋子
+    metal: function (t, p, out) {
+      const tau = 0.16 * p.decayMul;
+      const ratio = [1.41, 1.73, 2.31][Math.floor(p.shade * 3)];
+      const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = p.freq * 0.7;
+      hp.connect(out);
+      const car = osc("sine", p.freq, t, t + tau * 7, env(t, 0.4, 0.001, tau, hp));
+      const modGain = ctx.createGain();
+      modGain.gain.setValueAtTime(p.freq * (4 + p.shade2 * 4), t);
+      modGain.gain.setTargetAtTime(p.freq * 1.5, t, tau);
+      modGain.connect(car.frequency);
+      osc("sine", p.freq * ratio, t, t + tau * 7, modGain);
+      osc("triangle", p.freq * 2.76, t, t + tau * 4, env(t, 0.12, 0.001, tau * 0.5, hp));
+      noiseBurst(t, p.freq * 5, 2, 0.3, 0.004, hp);
+    },
+    // 雷射：音高快速滑動的「咻」，加一點雜訊
+    laser: function (t, p, out) {
+      const len = 0.12 + 0.08 * p.decayMul;
+      const up = p.shade2 >= 0.65;                       // 少數人是往上滑
+      const from = up ? p.freq * 0.5 : p.freq * (2.5 + p.shade);
+      const to = up ? p.freq * 2 : p.freq * 0.5;
+      const g = env(t, 0.5, 0.002, len * 0.45, out);
+      const o = osc(p.shade < 0.5 ? "sawtooth" : "triangle", from, t, t + len * 3, g);
+      o.frequency.exponentialRampToValueAtTime(to, t + len);
+      if (p.shade < 0.5) {
+        const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 3500;
+        o.disconnect(); o.connect(lp); lp.connect(g);
+      }
+      noiseBurst(t, p.freq * 3, 1.5, 0.12, len * 0.3, out);
+    }
+  };
+
+  function hit(t) {
+    (VOICES[live.timbre] || VOICES.wood)(t, live, master);
   }
 
   /* ---------- 排程器：一拍一下，間隔 = 60 / BPM ---------- */
   function tick() {
-    const now = performance.now();
-    smooth((now - lastTick) / 1000);
-    lastTick = now;
     // 若手機卡頓或切到背景太久，從現在重新對齊，不一次補播
     if (nextTime < ctx.currentTime - 0.2) nextTime = ctx.currentTime + 0.05;
     while (nextTime < ctx.currentTime + LOOKAHEAD) {
@@ -145,10 +200,9 @@ TS.AudioEngine = function () {
 
   /* ---------- 對外介面 ---------- */
   return {
-    /** 設定目標聲音參數（來自 TS.mapScoresToSound），聲音會平滑過渡 */
+    /** 設定聲音參數（來自 TS.mapScoresToSound），下一拍開始生效 */
     setTarget: function (params) {
-      target = Object.assign({}, params);
-      if (!live) live = Object.assign({}, params);
+      live = Object.assign({}, params);
     },
     /** 音量 0～1，實際輸出會乘上 SOUND_CONFIG.maxGain */
     setVolume: function (v) {
@@ -163,7 +217,6 @@ TS.AudioEngine = function () {
       master.gain.cancelScheduledValues(ctx.currentTime);
       master.gain.setTargetAtTime(volume * cfg.maxGain, ctx.currentTime, 0.05);
       nextTime = ctx.currentTime + 0.08;
-      lastTick = performance.now();
       tick();
       timer = setInterval(tick, TICK_MS);
     },
